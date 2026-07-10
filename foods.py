@@ -68,6 +68,37 @@ FOODS = [
     {"name": "橄榄油", "cat": "油脂", "kcal": 884, "p": 0.0, "f": 100.0, "c": 0.0, "flags": ["low_purine", "low_sodium", "vegetarian", "high_fat"]},
 ]
 
+# ---------- 食物图片（emoji 代表，无网络也能显示）与参考价 ----------
+CAT_EMOJI = {"谷薯": "🍚", "蛋白": "🍗", "蔬菜": "🥬", "水果": "🍎", "坚果": "🥜", "油脂": "🫒"}
+FOOD_EMOJI = {
+    "牛奶": "🥛", "无糖酸奶": "🥛", "无糖豆浆": "🥤", "鸡蛋": "🥚", "豆腐": "🧈",
+    "鸡胸肉": "🍗", "瘦猪肉": "🥩", "瘦牛肉": "🥩", "猪肝": "🍖", "毛豆(熟)": "🫛",
+    "鲫鱼": "🐟", "带鱼": "🐟", "虾": "🦐",
+    "燕麦(干)": "🌾", "糙米(干)": "🌾", "糙米饭(熟)": "🍚", "米饭(熟)": "🍚",
+    "全麦面包": "🍞", "红薯": "🍠", "玉米": "🌽",
+    "西兰花": "🥦", "菠菜": "🥬", "小白菜": "🥬", "生菜": "🥬", "黄瓜": "🥒",
+    "冬瓜": "🥒", "西红柿": "🍅", "胡萝卜": "🥕", "南瓜": "🎃", "香菇": "🍄", "土豆": "🥔",
+    "苹果": "🍎", "蓝莓": "🫐", "橙子": "🍊", "猕猴桃": "🥝", "香蕉": "🍌",
+    "核桃": "🌰", "杏仁": "🌰", "橄榄油": "🫒",
+}
+# 参考价：元 / 100g（菜场超市常见价近似，仅供估算，非实时零售价）
+CAT_PRICE = {"谷薯": 5.0, "蛋白": 18.0, "蔬菜": 4.0, "水果": 8.0, "坚果": 50.0, "油脂": 30.0}
+# 个别覆盖（按实际常见价）
+FOOD_PRICE = {
+    "牛奶": 1.2, "无糖酸奶": 1.5, "无糖豆浆": 0.5, "鸡蛋": 1.2, "橄榄油": 16.0,
+    "核桃": 50.0, "杏仁": 50.0,
+}
+
+
+def _food_emoji(name, cat=""):
+    return FOOD_EMOJI.get(name) or CAT_EMOJI.get(cat, "🍽️")
+
+
+def _food_price(name, cat="", g=0):
+    per100 = FOOD_PRICE.get(name, CAT_PRICE.get(cat, 8.0))
+    return round(per100 * g / 100.0, 1)
+
+
 _FOOD_BY_NAME = {f["name"]: f for f in FOODS}
 
 
@@ -209,7 +240,10 @@ def _build_day(conds, factor, day_index, taste):
             day_shop[name] = day_shop.get(name, 0) + it["g"]
         if items:
             meals[meal] = _sum_meal(items)
-    return meals, [{"name": k, "g": round(v)} for k, v in day_shop.items()]
+    return meals, [{"name": k, "g": round(v),
+                    "emoji": _food_emoji(k, _FOOD_BY_NAME.get(k, {}).get("cat", "")),
+                    "price": _food_price(k, _FOOD_BY_NAME.get(k, {}).get("cat", ""), v)}
+                   for k, v in day_shop.items()]
 
 
 def build_plan(targets, conditions, prefs=None, days=1, portion=1.0, taste="家常"):
@@ -240,7 +274,10 @@ def build_plan(targets, conditions, prefs=None, days=1, portion=1.0, taste="家�
         for s in shop:
             total_shop[s["name"]] = total_shop.get(s["name"], 0) + s["g"]
 
-    shopping_total = [{"name": k, "g": round(v)} for k, v in total_shop.items()]
+    shopping_total = [{"name": k, "g": round(v),
+                       "emoji": _food_emoji(k, _FOOD_BY_NAME.get(k, {}).get("cat", "")),
+                       "price": _food_price(k, _FOOD_BY_NAME.get(k, {}).get("cat", ""), v)}
+                      for k, v in total_shop.items()]
     first = day_plans[0]
     return {
         "days": day_plans,
@@ -255,6 +292,8 @@ def build_plan(targets, conditions, prefs=None, days=1, portion=1.0, taste="家�
 def _item(food, g):
     return {
         "name": food["name"], "g": round(g),
+        "emoji": _food_emoji(food["name"], food.get("cat", "")),
+        "price": _food_price(food["name"], food.get("cat", ""), g),
         "kcal": round(food["kcal"] * g / 100.0),
         "p": round(food["p"] * g / 100.0, 1),
         "f": round(food["f"] * g / 100.0, 1),

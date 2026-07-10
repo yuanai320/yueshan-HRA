@@ -100,7 +100,10 @@ if uploaded and st.session_state.get("hra_applied_for") != current_names:
             notes.append(f"· {u.name}：{res['note']}")
     # 图片：多张一次性 OCR 合并成一份文本，再统一解析指标（悦检同源）
     if _img_files:
-        _merged_text, _img_note = hra_mod.ocr_images_to_text(_img_files, secrets=_sec)
+        try:
+            _merged_text, _img_note = hra_mod.ocr_images_to_text(_img_files, secrets=_sec)
+        except Exception as _e:
+            _merged_text, _img_note = "", f"图片识别模块异常：{_e}（请确认 hra_parser.py 与 app.py 为同一版本重新部署）"
         if _img_note:
             notes.append(f"· 图片识别：{_img_note}")
         if _merged_text and _merged_text.strip():
@@ -122,6 +125,13 @@ if uploaded and st.session_state.get("hra_applied_for") != current_names:
 
 if not uploaded:
     st.session_state["hra_applied_for"] = None
+
+# 多张照片预览（与悦检同源：传完即见，确认传对了几张、哪张没识别）
+if _img_files:
+    st.caption(f"📷 已选择 {len(_img_files)} 张照片，识别后自动读取关键指标：")
+    _prev = st.columns(min(len(_img_files), 4))
+    for _i, _f in enumerate(_img_files):
+        _prev[_i % 4].image(_f.getvalue(), caption=_f.name, width=160)
 
 if "hra_last_summary" in st.session_state and uploaded:
     st.markdown(f'<div class="hra-box">✅ {st.session_state["hra_last_summary"]}'
@@ -196,12 +206,16 @@ for _day in plan["days"]:
         with st.expander(f"{meal} · {d['kcal']} kcal（蛋白 {d['p']}g / 脂肪 {d['f']}g / 碳水 {d['c']}g）",
                          expanded=(meal == "早餐" and _day is plan["days"][0])):
             for it in d["items"]:
-                st.markdown(f"- **{it['name']}**　{it['g']} g　·　{it['kcal']} kcal")
+                st.markdown(f"- {it.get('emoji','🍽️')} **{it['name']}**　{it['g']} g　·　{it['kcal']} kcal　·　约 ¥{it.get('price', 0)}")
 
-_shop_title = f"### 🛒 购物清单（{_nd} 天汇总）" if _nd > 1 else "### 🛒 购物清单（当日）"
+_shop_total_price = sum(s.get("price", 0) for s in plan["shopping_total"])
+_shop_title = (f"### 🛒 购物清单（{_nd} 天汇总 · 参考价约 ¥{_shop_total_price}）"
+               if _nd > 1 else "### 🛒 购物清单（当日）")
 st.markdown(_shop_title)
-shop_lines = "、".join([f"{s['name']}（{s['g']}g）" for s in plan["shopping_total"]])
-st.markdown(f'<div class="card">{shop_lines}</div>', unsafe_allow_html=True)
+shop_rows = "".join(
+    f"<div style='padding:3px 0;'>　{s.get('emoji','🍽️')} {s['name']}　{s['g']}g　·　约 ¥{s.get('price', 0)}</div>"
+    for s in plan["shopping_total"])
+st.markdown(f'<div class="card">{shop_rows}</div>', unsafe_allow_html=True)
 
 st.markdown("### 💡 为什么这样安排（归源权威指南）")
 for line in foods_mod.explanation(goal, conditions, taste_sel):

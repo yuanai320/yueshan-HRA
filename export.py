@@ -83,7 +83,7 @@ def _meal_table(meal, d):
              Paragraph("热量 / 营养", _ST_CELLH)]]
     for it in d["items"]:
         rows.append([
-            Paragraph(it["name"], _ST_CELL),
+            Paragraph(f"{it.get('emoji','')} {it['name']}", _ST_CELL),
             Paragraph(f"{it['g']} g", _ST_CELL),
             Paragraph(f"{it['kcal']} kcal", _ST_CELL),
         ])
@@ -107,10 +107,13 @@ def _meal_table(meal, d):
 
 
 def _shopping_table(shopping):
-    rows = [[Paragraph("食材", _ST_CELLH), Paragraph("一日建议购买量", _ST_CELLH)]]
+    rows = [[Paragraph("食材", _ST_CELLH), Paragraph("建议购买量", _ST_CELLH),
+             Paragraph("参考价", _ST_CELLH)]]
     for s in shopping:
-        rows.append([Paragraph(s["name"], _ST_CELL), Paragraph(f"{s['g']} g", _ST_CELL)])
-    t = Table(rows, colWidths=[90 * mm, 84 * mm])
+        rows.append([Paragraph(f"{s.get('emoji','')} {s['name']}", _ST_CELL),
+                     Paragraph(f"{s['g']} g", _ST_CELL),
+                     Paragraph(f"约 ¥{s.get('price', 0)}", _ST_CELL)])
+    t = Table(rows, colWidths=[80 * mm, 54 * mm, 40 * mm])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), C_GREEN2),
         ("GRID", (0, 0), (-1, -1), 0.4, C_LINE),
@@ -202,11 +205,11 @@ def build_plan_text(user_label, targets, days, shopping_total, explanation_lines
         for meal, d in day["meals"].items():
             L.append(f"· {meal}（约 {d['kcal']} kcal，蛋白{d['p']}g/脂肪{d['f']}g/碳水{d['c']}g）")
             for it in d["items"]:
-                L.append(f"    - {it['name']} {it['g']} g · {it['kcal']} kcal")
+                L.append(f"    - {it.get('emoji','')} {it['name']} {it['g']} g · {it['kcal']} kcal · 约¥{it.get('price', 0)}")
     L.append("")
     L.append(f"【购物清单（{'%d 天汇总' % _nd if _nd > 1 else '当日'}）】")
     for s in shopping_total:
-        L.append(f"· {s['name']} {s['g']} g")
+        L.append(f"· {s.get('emoji','')} {s['name']} {s['g']} g · 约¥{s.get('price', 0)}")
     L.append("")
     L.append("【为什么这样安排】")
     for line in explanation_lines:
