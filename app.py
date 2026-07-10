@@ -277,7 +277,8 @@ if _lat and _lng:
 map_html = poi_mod.build_map_html(city=city, shopping=plan["shopping"], user_center=user_center)
 st.components.v1.html(map_html, height=540)
 
-st.markdown('<p class="disclaimer">地图门店坐标为「城市中心 + 全国连锁商超示意偏移」，以地图实际为准；'
+st.markdown('<p class="disclaimer">地图门店按「实际在营」标注：仅显示该市真实存在的连锁品牌，'
+            '不在营的一律不标；每城另附本地农贸市场 / 社区生鲜超市作为便民兜底。门店坐标为「城市中心 + 示意偏移」，以地图实际为准；'
             '标价为「参考价」非实时零售价。实时价格需商家数据接口，本作品为免费学习项目，不接入付费数据源。</p>', unsafe_allow_html=True)
 st.markdown('<p class="disclaimer">免责声明：本方案为示例性推算，不构成医疗或营养诊断建议；'
             '如有疾病或特殊膳食需求，请咨询注册营养师或执业医师。</p>', unsafe_allow_html=True)

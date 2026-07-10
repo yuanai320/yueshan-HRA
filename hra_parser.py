@@ -130,11 +130,12 @@ def _from_image(data, secrets=None):
             img = img.resize((int(w * scale), int(h * scale)))
         txt = pytesseract.image_to_string(img, lang="chi_sim+eng")
         return txt, None
-    except Exception as e:
-        return "", ("图片 OCR 在当前环境不可用。两种免费方案：① 本地/自托管运行（已装 tesseract）"
-                    "可自动识别；② 云端部署可接入免费额度 OCR（腾讯云/百度每月 1000 次免费），"
-                    "把接口地址填到 Streamlit secrets 的 OCR_API_URL 即可。建议用 PDF/Excel/Word "
-                    "上传以自动读取关键指标。")
+    except Exception:
+        return "", ("图片 OCR 在当前环境未启用（需安装 tesseract 才能识别拍照报告）。"
+                    "两种免费方案：① 本地/自托管运行（已装 tesseract）可自动识别；"
+                    "② 云端部署在 requirements 同级放 packages.txt 写入 tesseract-ocr 与 "
+                    "tesseract-ocr-chi-sim 即可自动安装。也可改用 PDF/Excel/Word 上传自动读取，"
+                    "或直接手动填表。")
 
 
 def ocr_images_to_text(files, secrets=None):
@@ -175,13 +176,22 @@ def ocr_images_to_text(files, secrets=None):
             if max(w, h) < 2000:
                 scale = 2000.0 / max(w, h)
                 img = img.resize((int(w * scale), int(h * scale)))
-            txt = pytesseract.image_to_string(img, lang="chi_sim+eng")
+            txt = ""
+            try:
+                txt = pytesseract.image_to_string(img, lang="chi_sim+eng")
+            except Exception:
+                # 中文包缺失时回退英文识别，尽量不空手而归
+                try:
+                    txt = pytesseract.image_to_string(img, lang="eng")
+                except Exception:
+                    txt = ""
             if txt and txt.strip():
                 texts.append(txt)
             else:
-                notes.append(f"{f.name} 未识别到文字")
-        except Exception as e:
-            notes.append(f"{f.name} OCR 不可用（需本机/自托管安装 tesseract+chi_sim）：{e}")
+                notes.append(f"{f.name} 未识别到文字（请上传清晰、正向的报告照片）")
+        except Exception:
+            notes.append(f"{f.name} 图片 OCR 未启用（部署环境需安装 tesseract 才能识别拍照报告；"
+                         f"可改用 PDF / Excel / Word 上传自动读取，或手动填表）")
     merged = "\n\n".join(texts)
     note = "；".join(notes) if notes else None
     return merged, note
