@@ -6,6 +6,7 @@
 - 纯文本版便于微信转发给家人 / 营养师。
 """
 
+import os
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -22,7 +23,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 def _register_cn_font():
     """优先嵌入 TrueType 中文字体，确保电脑/手机任意阅读器都能显示中文；
     找不到系统字体时回退 reportlab 内置 CID 字体（STSong-Light）。"""
+    _dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
+        (os.path.join(_dir, "cn_font.ttc"), 0),                 # 项目内开源中文字体（跨平台一致，优先）
         ("C:/Windows/Fonts/msyh.ttc", 0),                       # 微软雅黑 (Windows)
         ("C:/Windows/Fonts/simhei.ttf", 0),                     # 黑体 (Windows)
         ("C:/Windows/Fonts/simsun.ttc", 0),                     # 宋体 (Windows)
