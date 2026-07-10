@@ -118,15 +118,73 @@ def _from_image(data, secrets=None):
             pass  # 云端失败则回退本地 / 提示
     # 2) 本地 pytesseract（自托管 / 本地运行免费可用）
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
         import pytesseract
-        txt = pytesseract.image_to_string(Image.open(io.BytesIO(data)), lang="chi_sim+eng")
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+        # 增强预处理（与「悦检」同源）：灰度 + 自动对比度 + 小字放大，提升识别率
+        img = ImageOps.grayscale(img)
+        img = ImageOps.autocontrast(img)
+        w, h = img.size
+        if max(w, h) < 2000:
+            scale = 2000.0 / max(w, h)
+            img = img.resize((int(w * scale), int(h * scale)))
+        txt = pytesseract.image_to_string(img, lang="chi_sim+eng")
         return txt, None
     except Exception as e:
         return "", ("图片 OCR 在当前环境不可用。两种免费方案：① 本地/自托管运行（已装 tesseract）"
                     "可自动识别；② 云端部署可接入免费额度 OCR（腾讯云/百度每月 1000 次免费），"
                     "把接口地址填到 Streamlit secrets 的 OCR_API_URL 即可。建议用 PDF/Excel/Word "
                     "上传以自动读取关键指标。")
+
+
+def ocr_images_to_text(files, secrets=None):
+    """多张图片 OCR 合并（与「悦检」同源）：逐张增强后识别，拼接成一份文本再统一解析。
+
+    返回 (合并文本, 提示信息或 None)。无 tesseract 时给出友好提示，不崩溃。
+    """
+    if not files:
+        return "", None
+    texts, notes = [], []
+    for f in files:
+        data = f.getvalue()
+        # 1) 云端 OCR（可选，配 secrets 即用）
+        url = (secrets or {}).get("OCR_API_URL") or (secrets or {}).get("ocr_api_url")
+        if url:
+            try:
+                import base64, requests
+                key = (secrets or {}).get("OCR_API_KEY") or (secrets or {}).get("ocr_api_key") or ""
+                r = requests.post(url, json={"image": base64.b64encode(data).decode(), "api_key": key}, timeout=15)
+                if r.ok:
+                    j = r.json() or {}
+                    txt = j.get("text") or j.get("TextDetections") or ""
+                    if isinstance(txt, list):
+                        txt = "\n".join(str(x) for x in txt)
+                    if txt and txt.strip():
+                        texts.append(txt)
+                        continue
+            except Exception:
+                pass
+        # 2) 本地 pytesseract（增强预处理：灰度 + 自动对比度 + 放大，提升识别率）
+        try:
+            from PIL import Image, ImageOps
+            import pytesseract
+            img = Image.open(io.BytesIO(data)).convert("RGB")
+            img = ImageOps.grayscale(img)
+            img = ImageOps.autocontrast(img)
+            w, h = img.size
+            if max(w, h) < 2000:
+                scale = 2000.0 / max(w, h)
+                img = img.resize((int(w * scale), int(h * scale)))
+            txt = pytesseract.image_to_string(img, lang="chi_sim+eng")
+            if txt and txt.strip():
+                texts.append(txt)
+            else:
+                notes.append(f"{f.name} 未识别到文字")
+        except Exception as e:
+            notes.append(f"{f.name} OCR 不可用（需本机/自托管安装 tesseract+chi_sim）：{e}")
+    merged = "\n\n".join(texts)
+    note = "；".join(notes) if notes else None
+    return merged, note
 
 
 # ---------- 2. 指标识别 ----------

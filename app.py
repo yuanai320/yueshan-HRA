@@ -76,10 +76,14 @@ with up_cols[2]:
 with up_cols[3]:
     up_docx = st.file_uploader("📝 Word", type=["docx"], key="up_docx")
 with up_cols[4]:
-    up_img = st.file_uploader("📷 拍照", type=["png", "jpg", "jpeg"], key="up_img")
+    up_img = st.file_uploader("📷 拍照", type=["png", "jpg", "jpeg"],
+                              accept_multiple_files=True, key="up_img")
 
-uploaded = [u for u in (up_xlsx, up_pptx, up_pdf, up_docx, up_img) if u is not None]
-current_names = tuple(sorted(u.name for u in uploaded))
+# 图片与非图片分开收集：图片走「多张合并 OCR」（与悦检同源），非图片逐份解析
+_non_img = [u for u in (up_xlsx, up_pptx, up_pdf, up_docx) if u is not None]
+_img_files = up_img if isinstance(up_img, list) else ([up_img] if up_img else [])
+uploaded = _non_img + _img_files
+current_names = tuple(sorted([u.name for u in _non_img] + [f"IMG#{i}" for i in range(len(_img_files))]))
 
 if uploaded and st.session_state.get("hra_applied_for") != current_names:
     merged_ind, merged_conds, notes = {}, set(), []
@@ -87,13 +91,23 @@ if uploaded and st.session_state.get("hra_applied_for") != current_names:
         _sec = st.secrets
     except Exception:
         _sec = None
-    for u in uploaded:
+    for u in _non_img:
         res = hra_mod.parse_hra_file(u.name, u.getvalue(), secrets=_sec)
         if res["indicators"]:
             merged_ind.update(res["indicators"])
         merged_conds.update(res["conditions"])
         if res["note"]:
             notes.append(f"· {u.name}：{res['note']}")
+    # 图片：多张一次性 OCR 合并成一份文本，再统一解析指标（悦检同源）
+    if _img_files:
+        _merged_text, _img_note = hra_mod.ocr_images_to_text(_img_files, secrets=_sec)
+        if _img_note:
+            notes.append(f"· 图片识别：{_img_note}")
+        if _merged_text and _merged_text.strip():
+            _ind = hra_mod.parse_indicators(_merged_text)
+            if _ind:
+                merged_ind.update(_ind)
+            merged_conds.update(hra_mod.derive_conditions(_ind, merged_ind.get("sex", "女")))
     # 回填表单
     if merged_ind.get("sex"): st.session_state["hra_sex"] = merged_ind["sex"]
     if merged_ind.get("age"): st.session_state["hra_age"] = int(merged_ind["age"])
@@ -149,8 +163,10 @@ with st.form("yueshan_form"):
         taste_sel = st.radio("口味", ["家常", "清淡", "浓郁"], horizontal=True, key="hra_taste")
 
     submitted = st.form_submit_button("✨ 生成我的膳食方案", use_container_width=True)
+    if submitted:
+        st.session_state["ys_generated"] = True
 
-if not submitted:
+if not st.session_state.get("ys_generated", False):
     st.info("填好上面（或上传 HRA 自动读取），点按钮，立刻生成专属膳食方案 + 购物清单 + 全国就近买菜地图 🗺️")
     st.markdown('<p class="disclaimer">说明：本工具为健康服务与管理专业的学习性作品，方案依《中国居民膳食指南2022》《地中海饮食》'
                 '《DASH饮食》原则做示例推算，不替代注册营养师或医师的诊断与治疗建议。</p>', unsafe_allow_html=True)
