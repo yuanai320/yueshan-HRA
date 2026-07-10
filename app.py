@@ -8,6 +8,7 @@
 """
 
 import streamlit as st
+import re
 import foods as foods_mod
 import poi as poi_mod
 import hra_parser as hra_mod
@@ -184,8 +185,14 @@ if not st.session_state.get("ys_generated", False):
 
 # ================= ③ 计算与展示 =================
 conds = list(conditions)
+_aversions = []
 if allergy.strip():
-    conds.append(f"忌口:{allergy.strip()}")
+    # 忌口按「、，,;；空格/」拆成多条，每条单独生效（修：之前整串当一个词，多填就全部失效）
+    for _tok in re.split(r"[、，,;；\s/]+", allergy.strip()):
+        _tok = _tok.strip()
+        if _tok:
+            conds.append(f"忌口:{_tok}")
+            _aversions.append(_tok)
 targets = foods_mod.compute_targets(sex, age, height, weight, activity, goal)
 portion = {"标准": 1.0, "偏少": 0.85, "偏多": 1.15}[portion_sel]
 plan = foods_mod.build_plan(targets, conds, prefs, days=days_sel, portion=portion, taste=taste_sel)
@@ -199,6 +206,8 @@ m4.markdown(f'<div class="metric-box"><div class="kcal">{targets["carb_g"]}g</di
 st.caption(f"基础代谢 BMR ≈ {targets['bmr']} kcal ｜ 每日总消耗 TDEE ≈ {targets['tdee']} kcal")
 
 _nd = len(plan["days"])
+if _aversions:
+    st.info(f"🚫 已按你的忌口自动避开：{'、'.join(_aversions)}（相关食材已从方案与购物清单移除）")
 st.markdown(f"### 🍱 膳食方案（共 {_nd} 天循环 · 食材亲民、厨房可操作）")
 for _day in plan["days"]:
     st.markdown(f"#### 📅 {_day['label']}")

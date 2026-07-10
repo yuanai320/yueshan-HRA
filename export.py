@@ -16,10 +16,32 @@ from reportlab.platypus import (
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.pdfbase.ttfonts import TTFont
 
-# 注册中文 CID 字体（reportlab 内置，无需外部 .ttf）
-pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
-CN = "STSong-Light"
+
+def _register_cn_font():
+    """优先嵌入 TrueType 中文字体，确保电脑/手机任意阅读器都能显示中文；
+    找不到系统字体时回退 reportlab 内置 CID 字体（STSong-Light）。"""
+    candidates = [
+        ("C:/Windows/Fonts/msyh.ttc", 0),                       # 微软雅黑 (Windows)
+        ("C:/Windows/Fonts/simhei.ttf", 0),                     # 黑体 (Windows)
+        ("C:/Windows/Fonts/simsun.ttc", 0),                     # 宋体 (Windows)
+        ("/System/Library/Fonts/PingFang.ttc", 0),              # macOS 苹方
+        ("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", 0),    # Linux 文泉驿
+        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
+    ]
+    for path, idx in candidates:
+        try:
+            pdfmetrics.registerFont(TTFont("CN", path, subfontIndex=idx))
+            return "CN"
+        except Exception:
+            continue
+    pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+    return "STSong-Light"
+
+
+# 注册中文字体（嵌入优先，跨平台回退）
+CN = _register_cn_font()
 
 # 配色
 C_GREEN = colors.HexColor("#2E7D32")
@@ -186,34 +208,57 @@ def build_pdf(user_label, targets, days, shopping_total, explanation_lines,
     return buf.getvalue()
 
 
+def _disp_width(s):
+    """按显示宽度计算（中文/全角算 2，英文数字算 1），用于纯文本列对齐。"""
+    return sum(2 if ord(ch) > 0x2E80 else 1 for ch in str(s))
+
+
+def _pad(s, n):
+    s = str(s)
+    return s + " " * max(1, n - _disp_width(s))
+
+
 def build_plan_text(user_label, targets, days, shopping_total, explanation_lines,
                     hra_summary=None):
-    """返回纯文本方案（便于微信转发）。"""
+    """返回纯文本方案（便于微信转发）：对齐表格 + 留白，手机窄屏不挤。"""
     L = []
     L.append("🥗 悦膳 · 膳食方案")
     L.append("源自「悦检」HRA 生态 · 检测→饮食干预闭环")
-    L.append("─" * 30)
+    L.append("─" * 28)
     L.append(user_label)
-    L.append(f"每日目标：总热量 {targets['kcal']} kcal｜蛋白质 {targets['protein_g']}g｜"
-             f"脂肪 {targets['fat_g']}g｜碳水 {targets['carb_g']}g")
-    L.append(f"（基础代谢 BMR≈{targets['bmr']} kcal，每日总消耗 TDEE≈{targets['tdee']} kcal）")
+    L.append("每日目标：总热量 %d kcal｜蛋白 %s g｜脂肪 %s g｜碳水 %s g"
+             % (targets['kcal'], targets['protein_g'], targets['fat_g'], targets['carb_g']))
+    L.append("（基础代谢 BMR≈%d，每日总消耗 TDEE≈%d）" % (targets['bmr'], targets['tdee']))
     L.append("")
     _nd = len(days)
-    L.append(f"【膳食方案（共 {_nd} 天循环）】")
+    L.append("【膳食方案 · %d天循环】" % _nd)
     for day in days:
-        L.append(f"▶ {day['label']}")
+        L.append("")
+        L.append("▶ %s" % day['label'])
         for meal, d in day["meals"].items():
-            L.append(f"· {meal}（约 {d['kcal']} kcal，蛋白{d['p']}g/脂肪{d['f']}g/碳水{d['c']}g）")
+            L.append("")
+            L.append("  %s（约 %d kcal）" % (meal, d['kcal']))
+            L.append("    %s %s %s %s" % (
+                _pad("食材", 15), _pad("份量", 9), _pad("热量", 11), "参考价"))
             for it in d["items"]:
-                L.append(f"    - {it.get('emoji','')} {it['name']} {it['g']} g · {it['kcal']} kcal · 约¥{it.get('price', 0)}")
+                _name = "%s%s" % (it.get('emoji', ''), it['name'])
+                L.append("    %s %s %s %s" % (
+                    _pad(_name, 15), _pad("%g g" % it['g'], 9),
+                    _pad("%g kcal" % it['kcal'], 11), "约 ¥%s" % it.get('price', 0)))
+            L.append("    %s" % ("─" * 32))
+            L.append("    小计：%d kcal　蛋白 %s g / 脂肪 %s g / 碳水 %s g"
+                     % (d['kcal'], d['p'], d['f'], d['c']))
     L.append("")
-    L.append(f"【购物清单（{'%d 天汇总' % _nd if _nd > 1 else '当日'}）】")
+    L.append("【购物清单 · %d天汇总】" % _nd)
+    L.append("  %s %s %s" % (_pad("食材", 17), _pad("购买量", 11), "参考价"))
     for s in shopping_total:
-        L.append(f"· {s.get('emoji','')} {s['name']} {s['g']} g · 约¥{s.get('price', 0)}")
+        _name = "%s%s" % (s.get('emoji', ''), s['name'])
+        L.append("  %s %s %s" % (
+            _pad(_name, 17), _pad("%g g" % s['g'], 11), "约 ¥%s" % s.get('price', 0)))
     L.append("")
     L.append("【为什么这样安排】")
     for line in explanation_lines:
-        L.append(f"· {line}")
+        L.append("· %s" % line)
     if hra_summary:
         L.append("")
         L.append("【来自 HRA 报告】")

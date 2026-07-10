@@ -197,6 +197,44 @@ def _swap_name(name, conditions):
     return name
 
 
+# 忌口品类同义词 → 命中食物集合（处理“海鲜/坚果”等无对应食物名的品类忌口）
+_AVOID_GROUPS = {
+    "海鲜": {"鲫鱼", "带鱼", "虾"},
+    "水产": {"鲫鱼", "带鱼", "虾"},
+    "鱼虾": {"鲫鱼", "带鱼", "虾"},
+    "坚果": {"核桃", "杏仁"},
+    "豆制品": {"豆腐", "无糖豆浆", "毛豆(熟)"},
+    "大豆": {"豆腐", "无糖豆浆", "毛豆(熟)"},
+}
+
+
+def _split_avoid(raw):
+    """把“牛奶、燕麦”这类整串按中英文逗号/顿号/分号/空格/斜杠拆成单条忌口。"""
+    parts, buf = [], []
+    for ch in raw or "":
+        if ch in "、，,;；/ \t\n":
+            if buf:
+                parts.append("".join(buf)); buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        parts.append("".join(buf))
+    return parts
+
+
+def _is_avoided(name, token):
+    """判断食物 name 是否应因忌口 token 而避开。"""
+    t = (token or "").strip()
+    if not t:
+        return False
+    if t in name:                        # 直接子串：牛奶→牛奶、燕麦→燕麦(干)
+        return True
+    grp = _AVOID_GROUPS.get(t)
+    if grp is not None and name in grp:     # 品类同义词：海鲜→鱼/虾
+        return True
+    return False
+
+
 def _build_day(conds, factor, day_index, taste):
     """生成第 day_index 天的一日方案（含当日购物清单）。"""
     meals = {}
@@ -226,13 +264,16 @@ def _build_day(conds, factor, day_index, taste):
             # 高血脂坚果减量
             if name == "核桃" and "高血脂" in conds:
                 ng = 10
-            # 忌口过滤
+            # 忌口过滤（支持多条：牛奶、燕麦 各自生效）
             skip = False
             for c in conds:
                 if c.startswith("忌口:"):
-                    key = c[3:].strip()
-                    if key and key in name:
-                        skip = True
+                    for _tok in _split_avoid(c[3:]):
+                        if _is_avoided(name, _tok):
+                            skip = True
+                            break
+                if skip:
+                    break
             if skip:
                 continue
             it = _item(nf, ng)
