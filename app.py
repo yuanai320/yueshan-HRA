@@ -11,7 +11,6 @@ import streamlit as st
 import re
 import foods as foods_mod
 import hra_parser as hra_mod
-import export as export_mod
 
 st.set_page_config(page_title="悦膳 · 膳食方案生成器", page_icon="🥗", layout="wide")
 
@@ -334,6 +333,7 @@ _expl_lines = foods_mod.explanation(goal, conditions, taste_sel)
 _hra_sum = None
 if "hra_last_summary" in st.session_state and st.session_state.get("hra_applied_for"):
     _hra_sum = st.session_state["hra_last_summary"]
+import export as export_mod  # 惰性导入：仅导出 PDF 时才加载 reportlab，避免启动即崩
 _pdf_bytes = export_mod.build_pdf(_user_label, targets, plan["days"], plan["shopping_total"],
                                   _expl_lines, _hra_sum, water=plan.get("water"), split=plan.get("split"))
 _txt_bytes = export_mod.build_plan_text(_user_label, targets, plan["days"], plan["shopping_total"],
