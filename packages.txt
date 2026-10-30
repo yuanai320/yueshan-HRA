@@ -1,1 +1,2 @@
-# 无需系统级依赖：OCR 使用 rapidocr-onnxruntime（纯 Python/ONNX，模型随包内置）
+libgl1
+libglib2.0-0
