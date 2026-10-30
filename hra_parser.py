@@ -92,21 +92,79 @@ def _from_pdf(data):
     return "\n".join(out), None
 
 
-def _from_image(data, secrets=None):
-    """图片 OCR：① 云端免费额度 OCR（可选，配 secrets 即用）→ ② 本地 pytesseract → ③ 友好提示。
+_OCR_ENGINE = None
+def _get_ocr_engine():
+    """RapidOCR(ONNX) 引擎单例：快、轻、中文准，无需系统 tesseract。"""
+    global _OCR_ENGINE
+    if _OCR_ENGINE is None:
+        from rapidocr_onnxruntime import RapidOCR
+        _OCR_ENGINE = RapidOCR()
+    return _OCR_ENGINE
 
-    云端 OCR 说明：腾讯云 / 百度智能云等通用文字识别均有「每月 1000 次」免费额度，
-    注册后在 Streamlit secrets 配置 OCR_API_URL（与 OCR_API_KEY）即可启用，默认不接、零麻烦。
-    接口约定：POST JSON {image: base64, api_key: key}，返回 {text: "识别文本"}。
-    """
-    # 1) 云端 OCR（可选）
+
+def _prep_image(data):
+    """解码并压缩：JPEG draft 低分辨率解码 + 大图缩到 1600px 上限，控内存。"""
+    from PIL import Image
+    im = Image.open(io.BytesIO(data))
+    try:
+        im.draft("RGB", (1600, 1600))
+    except Exception:
+        pass
+    im = im.convert("RGB")
+    w, h = im.size
+    mx = max(w, h)
+    if mx > 1600:
+        sc = 1600.0 / mx
+        im = im.resize((max(1, int(w * sc)), max(1, int(h * sc))))
+    return im
+
+
+def _rapid_ocr_pil(img):
+    """用 RapidOCR 识别 PIL 图，按检测框坐标还原表格版面（同行标签+值拼一起），返回文本；引擎不可用返回 None。"""
+    try:
+        import numpy as np
+        res, _ = _get_ocr_engine()(np.array(img.convert("RGB")))
+        if not res:
+            return ""
+        H = img.size[1]
+        thr = max(14.0, H * 0.018)   # 行聚类阈值：y 中心相差小于此值视为同一行
+        items = []
+        for item in res:
+            box, text = item[0], item[1]
+            if not text:
+                continue
+            ys = [pt[1] for pt in box]
+            xs = [pt[0] for pt in box]
+            items.append((sum(ys) / 4.0, min(xs), str(text)))
+        items.sort(key=lambda t: t[0])
+        lines, cur, lasty = [], [], None
+        for cy, cx, text in items:
+            if lasty is None or abs(cy - lasty) <= thr:
+                cur.append((cx, text))
+                lasty = cy if lasty is None else (lasty + cy) / 2.0
+            else:
+                lines.append(cur)
+                cur = [(cx, text)]
+                lasty = cy
+        if cur:
+            lines.append(cur)
+        out = []
+        for ln in lines:
+            ln.sort(key=lambda t: t[0])
+            out.append("  ".join(t[1] for t in ln))
+        return "\n".join(out)
+    except Exception:
+        return None
+
+
+def _from_image(data, secrets=None):
+    """图片 OCR：① 云端 OCR（可选，配 secrets 即用）→ ② 本地 RapidOCR → ③ 兜底 tesseract → ④ 提示。"""
     url = (secrets or {}).get("OCR_API_URL") or (secrets or {}).get("ocr_api_url")
     if url:
         try:
             import base64, requests
             key = (secrets or {}).get("OCR_API_KEY") or (secrets or {}).get("ocr_api_key") or ""
-            r = requests.post(url, json={"image": base64.b64encode(data).decode(), "api_key": key},
-                              timeout=15)
+            r = requests.post(url, json={"image": base64.b64encode(data).decode(), "api_key": key}, timeout=15)
             if r.ok:
                 j = r.json() or {}
                 txt = j.get("text") or j.get("TextDetections") or ""
@@ -115,50 +173,29 @@ def _from_image(data, secrets=None):
                 if txt and txt.strip():
                     return txt, None
         except Exception:
-            pass  # 云端失败则回退本地 / 提示
-    # 2) 本地 pytesseract（自托管 / 本地运行免费可用）
-    try:
-        from PIL import Image, ImageOps
-        import pytesseract
-        _im0 = Image.open(io.BytesIO(data))
-        try:
-            _im0.draft("RGB", (1600, 1600))
-        except Exception:
             pass
-        img = _im0.convert("RGB")
-        # 增强预处理（与「悦检」同源）：灰度 + 自动对比度 + 小字放大，提升识别率
-        img = ImageOps.grayscale(img)
-        img = ImageOps.autocontrast(img)
-        w, h = img.size
-        mx = max(w, h)
-        # OOM 防护：大图强制缩小到 1600px 上限，避免手机大照片吃爆内存；小图放大到 1200px 提升小字
-        if mx > 1600:
-            _s = 1600.0 / mx
-            img = img.resize((max(1, int(w * _s)), max(1, int(h * _s))))
-        elif mx < 1200:
-            _s = 1200.0 / mx
-            img = img.resize((int(w * _s), int(h * _s)))
-        txt = pytesseract.image_to_string(img, lang="chi_sim+eng")
-        return txt, None
+    try:
+        img = _prep_image(data)
     except Exception:
-        return "", ("图片 OCR 在当前环境未启用（需安装 tesseract 才能识别拍照报告）。"
-                    "两种免费方案：① 本地/自托管运行（已装 tesseract）可自动识别；"
-                    "② 云端部署在 requirements 同级放 packages.txt 写入 tesseract-ocr 与 "
-                    "tesseract-ocr-chi-sim 即可自动安装。也可改用 PDF/Excel/Word 上传自动读取，"
-                    "或直接手动填表。")
+        return "", "图片解码失败，请换一张清晰的照片。"
+    txt = _rapid_ocr_pil(img)
+    if txt is not None:
+        return txt, None
+    try:
+        import pytesseract
+        return pytesseract.image_to_string(img, lang="chi_sim+eng"), None
+    except Exception:
+        return "", ("图片 OCR 未启用（需安装 rapidocr-onnxruntime，见 requirements.txt）。"
+                    "请确认部署已按 requirements 安装依赖后重试，或手动填表。")
 
 
 def ocr_images_to_text(files, secrets=None):
-    """多张图片 OCR 合并（与「悦检」同源）：逐张增强后识别，拼接成一份文本再统一解析。
-
-    返回 (合并文本, 提示信息或 None)。无 tesseract 时给出友好提示，不崩溃。
-    """
+    """多张图片 OCR 合并：逐张 RapidOCR 识别，拼接成一份文本再统一解析。"""
     if not files:
         return "", None
     texts, notes = [], []
     for f in files:
         data = f.getvalue()
-        # 1) 云端 OCR（可选，配 secrets 即用）
         url = (secrets or {}).get("OCR_API_URL") or (secrets or {}).get("ocr_api_url")
         if url:
             try:
@@ -175,33 +212,13 @@ def ocr_images_to_text(files, secrets=None):
                         continue
             except Exception:
                 pass
-        # 2) 本地 pytesseract（增强预处理：灰度 + 自动对比度 + 放大，提升识别率）
         try:
-            from PIL import Image, ImageOps
-            import pytesseract
-            _im0 = Image.open(io.BytesIO(data))
-            try:
-                _im0.draft("RGB", (1600, 1600))
-            except Exception:
-                pass
-            img = _im0.convert("RGB")
-            img = ImageOps.grayscale(img)
-            img = ImageOps.autocontrast(img)
-            w, h = img.size
-            mx = max(w, h)
-            if mx > 1600:
-                _s = 1600.0 / mx
-                img = img.resize((max(1, int(w * _s)), max(1, int(h * _s))))
-            elif mx < 1200:
-                _s = 1200.0 / mx
-                img = img.resize((int(w * _s), int(h * _s)))
-            txt = ""
-            try:
-                txt = pytesseract.image_to_string(img, lang="chi_sim+eng")
-            except Exception:
-                # 中文包缺失时回退英文识别，尽量不空手而归
+            img = _prep_image(data)
+            txt = _rapid_ocr_pil(img)
+            if txt is None:
                 try:
-                    txt = pytesseract.image_to_string(img, lang="eng")
+                    import pytesseract
+                    txt = pytesseract.image_to_string(img, lang="chi_sim+eng")
                 except Exception:
                     txt = ""
             if txt and txt.strip():
@@ -209,8 +226,7 @@ def ocr_images_to_text(files, secrets=None):
             else:
                 notes.append(f"{f.name} 未识别到文字（请上传清晰、正向的报告照片）")
         except Exception:
-            notes.append(f"{f.name} 图片 OCR 未启用（部署环境需安装 tesseract 才能识别拍照报告；"
-                         f"可改用 PDF / Excel / Word 上传自动读取，或手动填表）")
+            notes.append(f"{f.name} 图片识别失败（请换一张清晰照片，或手动填表）")
     merged = "\n\n".join(texts)
     note = "；".join(notes) if notes else None
     return merged, note
@@ -230,7 +246,7 @@ def parse_indicators(text: str):
             except Exception:
                 pass
 
-    m = re.search(r"性别[：:\s]*([男女])", text)
+    m = re.search(r"性别.{0,20}?([男女])", text)
     if m:
         ind["sex"] = m.group(1)
 
@@ -241,7 +257,7 @@ def parse_indicators(text: str):
             ind["age"] = int(m.group(1))
     # HRA 报告含"出生日期"，无直接年龄 → 由出生日期推算
     if "age" not in ind:
-        m = re.search(r"出生日期[：:\s]*(\d{4})[-/](\d{1,2})[-/](\d{1,2})", text)
+        m = re.search(r"出生日期.{0,30}?(\d{4})[-/](\d{1,2})[-/](\d{1,2})", text)
         if m:
             try:
                 from datetime import date
@@ -253,8 +269,18 @@ def parse_indicators(text: str):
             except Exception:
                 pass
 
-    first(r"(?:身高|身髙)[：:\s]*(\d{2,3}(?:\.\d)?)\s*(?:cm|CM|Cm|厘米|公分)", "height")
-    first(r"(?:体重|重量)[：:\s]*(\d{2,3}(?:\.\d)?)\s*(?:kg|Kg|KG|千克|公斤|KG)", "weight")
+    # 身高：标签后同行找 140–210 的三位数（表格版式 OCR 会错位，用范围校验兜住）
+    _m = re.search(r"(?:身高|身髙)[^0-9]*(.*)", text)
+    if _m:
+        for _n in re.findall(r"\d{3}", _m.group(1)):
+            if 140 <= int(_n) <= 210:
+                ind["height"] = float(_n); break
+    # 体重：标签后同行找 30–150 的数字
+    _m = re.search(r"(?:体重|重量)[^0-9]*(.*)", text)
+    if _m:
+        for _n in re.findall(r"\d{2,3}", _m.group(1)):
+            if 30 <= int(_n) <= 150:
+                ind["weight"] = float(_n); break
 
     # HRA 为功能医学评估，不测血压/血糖/血脂/尿酸/BMI 等临床生化与体征数值
     # 仅解析报告里真实存在的：性别、出生日期(→年龄)、身高、体重
