@@ -103,38 +103,30 @@ if USERS:
 st.markdown('<div class="banner">⚠️ 本方案为依据《中国居民膳食指南2022》《地中海饮食》《DASH 饮食》的<b>示例性推算</b>，给出的是<b>膳食调整的方向性、倾向性建议</b>，不针对任何具体疾病，<b>不替代医师或注册营养师的诊断与处方</b>。如有疾病或特殊膳食需求，请遵医嘱或咨询专业人士。</div>', unsafe_allow_html=True)
 st.markdown("---")
 
-# ================= ① HRA 报告上传（五个窗口） =================
-st.markdown("### 📄 已有 HRA 报告？上传自动读取（与「悦检」同源）")
-st.caption("支持 Excel / PPT / PDF / Word 四种；没做过 HRA 也能直接往下填表 👇　（照片版报告请在「悦检」网页识别，悦膳免费环境不跑 OCR 以免内存超限）")
-up_cols = st.columns(4)
-with up_cols[0]:
-    up_xlsx = st.file_uploader("📊 Excel", type=["xlsx", "xls"], key="up_xlsx")
-with up_cols[1]:
-    up_pptx = st.file_uploader("📽️ PPT", type=["pptx"], key="up_pptx")
-with up_cols[2]:
-    up_pdf = st.file_uploader("📄 PDF", type=["pdf"], key="up_pdf")
-with up_cols[3]:
-    up_docx = st.file_uploader("📝 Word", type=["docx"], key="up_docx")
+# ================= ① HRA 报告上传（拍照/图片，自动 OCR 识别） =================
+st.markdown("### 📷 已有 HRA 报告？拍张照，自动读取")
+st.caption("用手机拍下 HRA 报告（或从相册选照片，可多张），系统自动识别关键信息并回填下方表单；照片越清晰、越正向、光线越足，识别越准。没做过 HRA 也能直接往下填表 👇")
+up_photos = st.file_uploader(
+    "📷 拍照 / 上传 HRA 报告照片（可多张）",
+    type=["jpg", "jpeg", "png", "bmp", "webp"],
+    accept_multiple_files=True, key="up_photo")
 
-# 图片与非图片分开收集：图片走「多张合并 OCR」（与悦检同源），非图片逐份解析
-_non_img = [u for u in (up_xlsx, up_pptx, up_pdf, up_docx) if u is not None]
-_img_files = []   # 悦膳免费环境不跑 OCR，照片识别请在「悦检」进行
-uploaded = _non_img + _img_files
-current_names = tuple(sorted([u.name for u in _non_img] + [f"IMG#{i}" for i in range(len(_img_files))]))
+current_names = tuple(sorted([f"IMG#{getattr(u, 'name', i)}" for i, u in enumerate(up_photos or [])]))
 
-if uploaded and st.session_state.get("hra_applied_for") != current_names:
+if up_photos and st.session_state.get("hra_applied_for") != current_names:
     merged_ind, merged_conds, notes = {}, set(), []
     try:
         _sec = st.secrets
     except Exception:
         _sec = None
-    for u in _non_img:
-        res = hra_mod.parse_hra_file(u.name, u.getvalue(), secrets=_sec)
-        if res["indicators"]:
-            merged_ind.update(res["indicators"])
-        merged_conds.update(res["conditions"])
-        if res["note"]:
-            notes.append(f"· {u.name}：{res['note']}")
+    with st.spinner("正在识别报告照片…（首次略慢，请稍候）"):
+        _text, _note = hra_mod.ocr_images_to_text(list(up_photos), _sec)
+    if _text:
+        _ind = hra_mod.parse_indicators(_text)
+        merged_ind.update(_ind)
+        merged_conds.update(hra_mod.derive_conditions(_ind, _ind.get("sex", "女")))
+    if _note:
+        notes.append(_note)
     # 回填表单
     if merged_ind.get("sex"): st.session_state["hra_sex"] = merged_ind["sex"]
     if merged_ind.get("age"): st.session_state["hra_age"] = int(merged_ind["age"])
@@ -143,16 +135,16 @@ if uploaded and st.session_state.get("hra_applied_for") != current_names:
     if merged_conds:
         st.session_state["hra_conditions"] = list(merged_conds)
     st.session_state["hra_applied_for"] = current_names
-    st.session_state["hra_last_summary"] = hra_mod.summarize({
-        "indicators": merged_ind, "conditions": list(merged_conds)})
+    st.session_state["hra_last_summary"] = hra_mod.summarize(
+        {"indicators": merged_ind, "conditions": list(merged_conds)})
     st.session_state["hra_notes"] = notes
 
-if not uploaded:
+if not up_photos:
     st.session_state["hra_applied_for"] = None
 
-if "hra_last_summary" in st.session_state and uploaded:
+if "hra_last_summary" in st.session_state and up_photos:
     st.markdown(f'<div class="hra-box">✅ {st.session_state["hra_last_summary"]}'
-                f'<br><span class="disclaimer">指标阈值参考国内常用临床切点，仅供膳食参考，不替代医师诊断。</span></div>',
+                f'<br><span class="disclaimer">识别结果仅供膳食参考，不替代医师诊断；若识别为空，请手动填表。</span></div>',
                 unsafe_allow_html=True)
     if st.session_state.get("hra_notes"):
         for n in st.session_state["hra_notes"]:

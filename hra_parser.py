@@ -120,14 +120,24 @@ def _from_image(data, secrets=None):
     try:
         from PIL import Image, ImageOps
         import pytesseract
-        img = Image.open(io.BytesIO(data)).convert("RGB")
+        _im0 = Image.open(io.BytesIO(data))
+        try:
+            _im0.draft("RGB", (1600, 1600))
+        except Exception:
+            pass
+        img = _im0.convert("RGB")
         # 增强预处理（与「悦检」同源）：灰度 + 自动对比度 + 小字放大，提升识别率
         img = ImageOps.grayscale(img)
         img = ImageOps.autocontrast(img)
         w, h = img.size
-        if max(w, h) < 2000:
-            scale = 2000.0 / max(w, h)
-            img = img.resize((int(w * scale), int(h * scale)))
+        mx = max(w, h)
+        # OOM 防护：大图强制缩小到 1600px 上限，避免手机大照片吃爆内存；小图放大到 1200px 提升小字
+        if mx > 1600:
+            _s = 1600.0 / mx
+            img = img.resize((max(1, int(w * _s)), max(1, int(h * _s))))
+        elif mx < 1200:
+            _s = 1200.0 / mx
+            img = img.resize((int(w * _s), int(h * _s)))
         txt = pytesseract.image_to_string(img, lang="chi_sim+eng")
         return txt, None
     except Exception:
@@ -169,13 +179,22 @@ def ocr_images_to_text(files, secrets=None):
         try:
             from PIL import Image, ImageOps
             import pytesseract
-            img = Image.open(io.BytesIO(data)).convert("RGB")
+            _im0 = Image.open(io.BytesIO(data))
+            try:
+                _im0.draft("RGB", (1600, 1600))
+            except Exception:
+                pass
+            img = _im0.convert("RGB")
             img = ImageOps.grayscale(img)
             img = ImageOps.autocontrast(img)
             w, h = img.size
-            if max(w, h) < 2000:
-                scale = 2000.0 / max(w, h)
-                img = img.resize((int(w * scale), int(h * scale)))
+            mx = max(w, h)
+            if mx > 1600:
+                _s = 1600.0 / mx
+                img = img.resize((max(1, int(w * _s)), max(1, int(h * _s))))
+            elif mx < 1200:
+                _s = 1200.0 / mx
+                img = img.resize((int(w * _s), int(h * _s)))
             txt = ""
             try:
                 txt = pytesseract.image_to_string(img, lang="chi_sim+eng")
