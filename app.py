@@ -16,6 +16,39 @@ import export as export_mod
 
 st.set_page_config(page_title="悦膳 · 膳食方案生成器", page_icon="🥗", layout="wide")
 
+# ─────────────────────────────────────────────
+# 访问统计（匿名：只记数字，不收集任何健康/饮食数据、不记录个人信息）
+# ─────────────────────────────────────────────
+def _counter(key, hit=False):
+    import urllib.request
+    try:
+        import json as _json
+    except Exception:
+        _json = None
+    op = "hit" if hit else "get"
+    try:
+        with urllib.request.urlopen(
+            "https://abacus.jasoncameron.dev/%s/yuanai-yueshan/%s" % (op, key),
+            timeout=3) as _r:
+            return __import__("json").loads(_r.read().decode("utf-8")).get("value")
+    except Exception:
+        return None
+
+if "_seen_once" not in st.session_state:
+    st.session_state["_seen_once"] = True
+    st.session_state["_users"] = _counter("users", hit=True)
+    st.session_state["_visits"] = _counter("visits", hit=True)
+    st.session_state["_plans"] = _counter("plans", hit=False)
+USERS = st.session_state.get("_users")
+VISITS = st.session_state.get("_visits")
+
+def _count_plan():
+    """生成方案时调用（同一会话只记一次）。"""
+    if st.session_state.get("_plan_once"):
+        return
+    st.session_state["_plan_once"] = True
+    st.session_state["_plans"] = _counter("plans", hit=True)
+
 # ---------- 黄绿活力系样式 ----------
 st.markdown("""
 <style>
@@ -61,7 +94,14 @@ for _k, _v in _DEFAULTS.items():
 st.markdown('<p class="big-title">🥗 悦膳 <span class="accent">·</span> 膳食方案生成器</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub">把健康管理专业知识变成能上线的产品 · 健康服务与管理 作品4 · 源自「悦检」HRA 生态</p>', unsafe_allow_html=True)
 st.markdown('<p class="value">3 步拿到专属膳食方案：① 上传 HRA 报告自动读取（或手动填表） ② 生成一日三餐 + 购物清单 ③ 一键导出 PDF / 就近买菜地图</p>', unsafe_allow_html=True)
-st.markdown('<div class="banner">⚠️ 本方案为依据《中国居民膳食指南2022》《地中海饮食》《DASH 饮食》的示例性推算，<b>不替代医师或注册营养师的诊断</b>。如有疾病或特殊膳食需求，请遵医嘱或咨询专业人士。</div>', unsafe_allow_html=True)
+if USERS:
+    _pl = st.session_state.get("_plans")
+    _tail = f" · 已生成 <b>{_pl}</b> 份方案" if _pl else ""
+    st.markdown(
+        f"<div style='text-align:right;color:#8a8a8a;font-size:0.86rem;margin:-0.4rem 0 0.6rem;'>"
+        f"👥 已有 <b>{USERS}</b> 位使用者来过{_tail}</div>",
+        unsafe_allow_html=True)
+st.markdown('<div class="banner">⚠️ 本方案为依据《中国居民膳食指南2022》《地中海饮食》《DASH 饮食》的<b>示例性推算</b>，给出的是<b>膳食调整的方向性、倾向性建议</b>，不针对任何具体疾病，<b>不替代医师或注册营养师的诊断与处方</b>。如有疾病或特殊膳食需求，请遵医嘱或咨询专业人士。</div>', unsafe_allow_html=True)
 st.markdown("---")
 
 # ================= ① HRA 报告上传（五个窗口） =================
@@ -104,7 +144,7 @@ if uploaded and st.session_state.get("hra_applied_for") != current_names:
         try:
             _merged_text, _img_note = hra_mod.ocr_images_to_text(_img_files, secrets=_sec)
         except Exception as _e:
-            _merged_text, _img_note = "", f"图片识别模块异常：{_e}（请确认 hra_parser.py 与 app.py 为同一版本重新部署）"
+            _merged_text, _img_note = "", f"图片识别出错：{_e}（请确认 hra_parser.py 与 app.py 为同一版本重新部署）"
         if _img_note:
             notes.append(f"· 图片识别：{_img_note}")
         if _merged_text and _merged_text.strip():
@@ -176,6 +216,7 @@ with st.form("yueshan_form"):
     submitted = st.form_submit_button("✨ 生成我的膳食方案", use_container_width=True)
     if submitted:
         st.session_state["ys_generated"] = True
+        _count_plan()
 
 if not st.session_state.get("ys_generated", False):
     st.info("填好上面（或上传 HRA 自动读取），点按钮，立刻生成专属膳食方案 + 购物清单 + 全国就近买菜地图 🗺️")
@@ -233,7 +274,7 @@ for line in foods_mod.explanation(goal, conditions, taste_sel):
 if "hra_last_summary" in st.session_state and st.session_state.get("hra_applied_for"):
     st.markdown("### 🔗 来自你的 HRA 报告（检测 → 饮食干预 闭环）")
     st.markdown(f'<div class="hra-box">本方案已读取你上传的 HRA 报告关键指标，'
-                f'并据此自动纳入饮食关注：<b>{("、".join(conditions) if conditions else "暂无异常提示")}</b>。'
+                f'并据此自动纳入饮食关注：<b>{("、".join(conditions) if conditions else "暂无需留意项")}</b>。'
                 f'「悦检」读懂报告，「悦膳」把指标变成一日三餐与购物清单——'
                 f'从「知道自己哪里要留意」到「每天知道吃什么」，形成可执行的检测→饮食干预闭环。</div>', unsafe_allow_html=True)
 
