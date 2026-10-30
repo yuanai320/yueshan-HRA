@@ -220,46 +220,39 @@ def parse_indicators(text: str):
         m = re.search(r"(\d{2,3})\s*岁", text)
         if m:
             ind["age"] = int(m.group(1))
+    # HRA 报告含"出生日期"，无直接年龄 → 由出生日期推算
+    if "age" not in ind:
+        m = re.search(r"出生日期[：:\s]*(\d{4})[-/](\d{1,2})[-/](\d{1,2})", text)
+        if m:
+            try:
+                from datetime import date
+                by, bm, bd = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                t = date.today()
+                age = t.year - by - ((t.month, t.day) < (bm, bd))
+                if 0 < age < 130:
+                    ind["age"] = age
+            except Exception:
+                pass
 
-    first(r"(?:身高|身髙)[：:\s]*(\d{2,3}(?:\.\d)?)\s*(?:cm|厘米|公分|CM)", "height")
-    first(r"(?:体重|重量)[：:\s]*(\d{2,3}(?:\.\d)?)\s*(?:kg|千克|公斤|KG)", "weight")
-    first(r"BMI[：:\s]*(\d{1,2}(?:\.\d)?)", "bmi")
+    first(r"(?:身高|身髙)[：:\s]*(\d{2,3}(?:\.\d)?)\s*(?:cm|CM|Cm|厘米|公分)", "height")
+    first(r"(?:体重|重量)[：:\s]*(\d{2,3}(?:\.\d)?)\s*(?:kg|Kg|KG|千克|公斤|KG)", "weight")
 
-    m = re.search(r"(?:血压|收缩压|高压)[^0-9]*(\d{2,3})\s*[/／]\s*(\d{2,3})", text)
-    if m:
-        ind["sbp"] = float(m.group(1)); ind["dbp"] = float(m.group(2))
-    else:
-        ms = re.search(r"收缩压[^0-9]*(\d{2,3})", text)
-        md = re.search(r"舒张压[^0-9]*(\d{2,3})", text)
-        if ms: ind["sbp"] = float(ms.group(1))
-        if md: ind["dbp"] = float(md.group(1))
-
-    first(r"(?:空腹血糖|血糖)[^0-9]*(\d(?:\.\d)?)", "glucose")
-    first(r"总胆固醇[^0-9]*(\d(?:\.\d)?)", "tc")
-    first(r"甘油三酯[^0-9]*(\d(?:\.\d)?)", "tg")
-    first(r"(?:低密度脂蛋白|低密度)[^0-9]*(\d(?:\.\d)?)", "ldl")
-    first(r"(?:高密度脂蛋白|高密度)[^0-9]*(\d(?:\.\d)?)", "hdl")
-    first(r"尿酸[^0-9]*(\d{2,3})", "uric", int)
+    # HRA 为功能医学评估，不测血压/血糖/血脂/尿酸/BMI 等临床生化与体征数值
+    # 仅解析报告里真实存在的：性别、出生日期(→年龄)、身高、体重
+    # BMI 由识别到的身高/体重自动推算（报告本身不含 BMI 直接值）
+    if ind.get("height") and ind.get("weight"):
+        try:
+            _hm = ind["height"] / 100.0
+            ind["bmi"] = round(ind["weight"] / (_hm * _hm), 1)
+        except Exception:
+            pass
     return ind
 
 
 # ---------- 3. 由指标推导饮食关注 ----------
 def derive_conditions(ind, sex="女"):
-    conds = []
-    if ind.get("glucose") is not None and ind["glucose"] >= 6.1:
-        conds.append("高血糖")
-    sbp = ind.get("sbp"); dbp = ind.get("dbp")
-    if (sbp and sbp >= 140) or (dbp and dbp >= 90):
-        conds.append("高血压")
-    tg = ind.get("tg"); ldl = ind.get("ldl")
-    if (tg and tg >= 1.7) or (ldl and ldl >= 3.4):
-        conds.append("高血脂")
-    uric = ind.get("uric")
-    if uric is not None:
-        cap = 420 if sex == "男" else 360
-        if uric > cap:
-            conds.append("痛风")
-    return conds
+    # HRA 为功能医学评估，不测血压/血糖/血脂/尿酸/BMI 等，无临床体征可推导饮食关注
+    return []
 
 
 # ---------- 4. 对外入口 ----------
@@ -284,13 +277,7 @@ def summarize(result):
     if ind.get("age"): parts.append(f"年龄 {ind['age']} 岁")
     if ind.get("height"): parts.append(f"身高 {ind['height']} cm")
     if ind.get("weight"): parts.append(f"体重 {ind['weight']} kg")
-    if ind.get("bmi"): parts.append(f"BMI {ind['bmi']}")
-    if ind.get("sbp") and ind.get("dbp"):
-        parts.append(f"血压 {int(ind['sbp'])}/{int(ind['dbp'])} mmHg")
-    if ind.get("glucose"): parts.append(f"空腹血糖 {ind['glucose']} mmol/L")
-    if ind.get("tg"): parts.append(f"甘油三酯 {ind['tg']} mmol/L")
-    if ind.get("ldl"): parts.append(f"低密度脂蛋白 {ind['ldl']} mmol/L")
-    if ind.get("uric"): parts.append(f"尿酸 {ind['uric']} μmol/L")
+    if ind.get("bmi"): parts.append(f"BMI {ind['bmi']}（推算）")
     if not parts:
         return "未从报告中识别到可读取的关键指标。"
     cond = result.get("conditions", [])
@@ -302,12 +289,10 @@ def summarize(result):
 
 if __name__ == "__main__":
     sample = """
-    姓名：张三  性别：男  年龄：45 岁
-    身高：175 cm  体重：82 kg  BMI：26.8
-    血压：145/95 mmHg
-    空腹血糖：7.2 mmol/L
-    总胆固醇：5.8  甘油三酯：2.3  低密度脂蛋白：3.6  高密度脂蛋白：1.1
-    尿酸：450 μmol/L
+    会员基本信息
+    姓名：测试  性别：男  出生日期：1971-01-01
+    身高：176 cm  体重：83 Kg
+    检测日期：2025-06-03
     """
     ind = parse_indicators(sample)
     print("指标:", ind)

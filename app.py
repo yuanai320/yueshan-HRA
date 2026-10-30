@@ -105,8 +105,8 @@ st.markdown("---")
 
 # ================= ① HRA 报告上传（五个窗口） =================
 st.markdown("### 📄 已有 HRA 报告？上传自动读取（与「悦检」同源）")
-st.caption("支持 Excel / PPT / PDF / Word / 拍照图片 五种；没做过 HRA 也能直接往下填表 👇")
-up_cols = st.columns(5)
+st.caption("支持 Excel / PPT / PDF / Word 四种；没做过 HRA 也能直接往下填表 👇　（照片版报告请在「悦检」网页识别，悦膳免费环境不跑 OCR 以免内存超限）")
+up_cols = st.columns(4)
 with up_cols[0]:
     up_xlsx = st.file_uploader("📊 Excel", type=["xlsx", "xls"], key="up_xlsx")
 with up_cols[1]:
@@ -115,13 +115,10 @@ with up_cols[2]:
     up_pdf = st.file_uploader("📄 PDF", type=["pdf"], key="up_pdf")
 with up_cols[3]:
     up_docx = st.file_uploader("📝 Word", type=["docx"], key="up_docx")
-with up_cols[4]:
-    up_img = st.file_uploader("📷 拍照", type=["png", "jpg", "jpeg"],
-                              accept_multiple_files=True, key="up_img")
 
 # 图片与非图片分开收集：图片走「多张合并 OCR」（与悦检同源），非图片逐份解析
 _non_img = [u for u in (up_xlsx, up_pptx, up_pdf, up_docx) if u is not None]
-_img_files = up_img if isinstance(up_img, list) else ([up_img] if up_img else [])
+_img_files = []   # 悦膳免费环境不跑 OCR，照片识别请在「悦检」进行
 uploaded = _non_img + _img_files
 current_names = tuple(sorted([u.name for u in _non_img] + [f"IMG#{i}" for i in range(len(_img_files))]))
 
@@ -138,19 +135,6 @@ if uploaded and st.session_state.get("hra_applied_for") != current_names:
         merged_conds.update(res["conditions"])
         if res["note"]:
             notes.append(f"· {u.name}：{res['note']}")
-    # 图片：多张一次性 OCR 合并成一份文本，再统一解析指标（悦检同源）
-    if _img_files:
-        try:
-            _merged_text, _img_note = hra_mod.ocr_images_to_text(_img_files, secrets=_sec)
-        except Exception as _e:
-            _merged_text, _img_note = "", f"图片识别出错：{_e}（请确认 hra_parser.py 与 app.py 为同一版本重新部署）"
-        if _img_note:
-            notes.append(f"· 图片识别：{_img_note}")
-        if _merged_text and _merged_text.strip():
-            _ind = hra_mod.parse_indicators(_merged_text)
-            if _ind:
-                merged_ind.update(_ind)
-            merged_conds.update(hra_mod.derive_conditions(_ind, merged_ind.get("sex", "女")))
     # 回填表单
     if merged_ind.get("sex"): st.session_state["hra_sex"] = merged_ind["sex"]
     if merged_ind.get("age"): st.session_state["hra_age"] = int(merged_ind["age"])
@@ -165,13 +149,6 @@ if uploaded and st.session_state.get("hra_applied_for") != current_names:
 
 if not uploaded:
     st.session_state["hra_applied_for"] = None
-
-# 多张照片预览（与悦检同源：传完即见，确认传对了几张、哪张没识别）
-if _img_files:
-    st.caption(f"📷 已选择 {len(_img_files)} 张照片，识别后自动读取关键指标：")
-    _prev = st.columns(min(len(_img_files), 4))
-    for _i, _f in enumerate(_img_files):
-        _prev[_i % 4].image(_f.getvalue(), caption=_f.name, width=160)
 
 if "hra_last_summary" in st.session_state and uploaded:
     st.markdown(f'<div class="hra-box">✅ {st.session_state["hra_last_summary"]}'
@@ -318,10 +295,18 @@ if plan.get("water"):
     st.markdown("### 💧 全天饮水计划")
     st.markdown(f"**建议每日饮水约 {_w['total']} ml**（约 {_w['total']//250} 杯，不含食物中的水分）。"
                 f"《中国居民膳食指南（2022）》推荐成年女性 1500 ml、男性 1700 ml 起。")
-    st.markdown("| 时段 | 水量 | 怎么喝 |")
-    st.markdown("|---|---|---|")
-    for _x in _w["plan"]:
-        st.markdown(f"| {_x['slot']} | **{_x['ml']} ml** | {_x['note']} |")
+    try:
+        import pandas as pd
+        _wdf = pd.DataFrame(
+            [{"时段": x["slot"], "水量": f"{x['ml']} ml", "怎么喝": x["note"]} for x in _w["plan"]]
+        )
+        st.table(_wdf)
+    except Exception:
+        # pandas 不可用时退回规范 markdown 表格
+        st.markdown("| 时段 | 水量 | 怎么喝 |")
+        st.markdown("|---|---|---|")
+        for _x in _w["plan"]:
+            st.markdown(f"| {_x['slot']} | {_x['ml']} ml | {_x['note']} |")
     st.caption("提示：天热、运动、出汗多时，在上述基础上再增加 300–500 ml；"
                "睡前 1 小时少喝，避免起夜。")
 
