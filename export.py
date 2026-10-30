@@ -131,6 +131,41 @@ def _meal_table(meal, d):
     return t
 
 
+def _dish_block(d):
+    """一餐内的每道菜：菜名 + 食材 + 做法步骤 + 提示（PDF 内不用 emoji，避免字体缺字）"""
+    out = []
+    for dish in d.get("dishes", []):
+        out.append(Paragraph(f"<b>{dish['name']}</b>（约 {dish['kcal']} kcal）", _ST_BODY))
+        ing = "、".join(f"{it['name']} {it['g']}g" for it in dish.get("items", []))
+        if ing:
+            out.append(Paragraph(f"食材：{ing}", _ST_SMALL))
+        for i, st in enumerate(dish.get("steps", []), 1):
+            out.append(Paragraph(f"　{i}. {st}", _ST_SMALL))
+        if dish.get("tip"):
+            out.append(Paragraph(f"　提示：{dish['tip']}", _ST_SMALL))
+    return out
+
+
+def _water_block(water):
+    rows = [[Paragraph("时段", _ST_CELLH), Paragraph("水量", _ST_CELLH), Paragraph("怎么喝", _ST_CELLH)]]
+    for x in water.get("plan", []):
+        rows.append([Paragraph(x["slot"], _ST_CELL), Paragraph(f"{x['ml']} ml", _ST_CELL),
+                     Paragraph(x["note"], _ST_CELL)])
+    rows.append([Paragraph("<b>全天合计</b>", _ST_CELL), Paragraph(f"<b>{water['total']} ml</b>", _ST_CELL),
+                 Paragraph("天热、运动、出汗多时再加 300–500 ml", _ST_CELL)])
+    t = Table(rows, colWidths=[36 * mm, 32 * mm, 106 * mm])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), C_GREEN),
+        ("BACKGROUND", (0, -1), (-1, -1), C_BG),
+        ("GRID", (0, 0), (-1, -1), 0.4, C_LINE),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    return t
+
+
 def _shopping_table(shopping):
     rows = [[Paragraph("食材", _ST_CELLH), Paragraph("建议购买量", _ST_CELLH),
              Paragraph("参考价", _ST_CELLH)]]
@@ -152,7 +187,7 @@ def _shopping_table(shopping):
 
 
 def build_pdf(user_label, targets, days, shopping_total, explanation_lines,
-              hra_summary=None):
+              hra_summary=None, water=None, split=None):
     """返回 PDF 字节（bytes）。"""
     buf = BytesIO()
     doc = SimpleDocTemplate(
@@ -178,9 +213,22 @@ def build_pdf(user_label, targets, days, shopping_total, explanation_lines,
     for day in days:
         el.append(Paragraph(day["label"], _ST_H2))
         for meal, d in day["meals"].items():
-            el.append(Paragraph(f"{meal}（约 {d['kcal']} kcal）", _ST_BODY))
-            el.append(_meal_table(meal, d))
-            el.append(Spacer(1, 3))
+            _pct = f"　占全天 {d['share']}%" if d.get("share") else ""
+            el.append(Paragraph(f"<b>{meal}</b>　约 {d['kcal']} kcal{_pct}　·　{d.get('set','')}", _ST_BODY))
+            if d.get("dishes"):
+                el.extend(_dish_block(d))
+            else:
+                el.append(_meal_table(meal, d))
+            el.append(Spacer(1, 4))
+
+    if water:
+        el.append(Paragraph("全天饮水计划", _ST_H2))
+        el.append(Paragraph(
+            f"建议每日饮水约 <b>{water['total']} ml</b>（约 {water['total'] // 250} 杯，不含食物中的水分）。"
+            "《中国居民膳食指南（2022）》推荐成年女性 1500 ml、男性 1700 ml 起。", _ST_SMALL))
+        el.append(Spacer(1, 3))
+        el.append(_water_block(water))
+        el.append(Spacer(1, 6))
 
     _shop_title = f"购物清单（{_nd} 天汇总）" if _nd > 1 else "购物清单（当日）"
     el.append(Paragraph(_shop_title, _ST_H2))
@@ -222,7 +270,7 @@ def _pad(s, n):
 
 
 def build_plan_text(user_label, targets, days, shopping_total, explanation_lines,
-                    hra_summary=None):
+                    hra_summary=None, water=None):
     """返回纯文本方案（便于微信转发）：对齐表格 + 留白，手机窄屏不挤。"""
     L = []
     L.append("🥗 悦膳 · 膳食方案")
@@ -240,7 +288,16 @@ def build_plan_text(user_label, targets, days, shopping_total, explanation_lines
         L.append("▶ %s" % day['label'])
         for meal, d in day["meals"].items():
             L.append("")
-            L.append("  %s（约 %d kcal）" % (meal, d['kcal']))
+            L.append("  %s（约 %d kcal）%s" % (meal, d['kcal'], d.get("set", "")))
+            for _dish in d.get("dishes", []):
+                L.append("     · %s（约 %s kcal）" % (_dish["name"], _dish["kcal"]))
+                _ing = "、".join("%s %sg" % (it["name"], it["g"]) for it in _dish.get("items", []))
+                if _ing:
+                    L.append("       食材：%s" % _ing)
+                for _i, _st in enumerate(_dish.get("steps", []), 1):
+                    L.append("       %d. %s" % (_i, _st))
+                if _dish.get("tip"):
+                    L.append("       提示：%s" % _dish["tip"])
             L.append("    %s %s %s %s" % (
                 _pad("食材", 15), _pad("份量", 9), _pad("热量", 11), "参考价"))
             for it in d["items"]:
@@ -252,6 +309,12 @@ def build_plan_text(user_label, targets, days, shopping_total, explanation_lines
             L.append("    小计：%d kcal　蛋白 %s g / 脂肪 %s g / 碳水 %s g"
                      % (d['kcal'], d['p'], d['f'], d['c']))
     L.append("")
+    if water:
+        L.append("")
+        L.append("【全天饮水计划】建议约 %d ml（约 %d 杯）" % (water["total"], water["total"] // 250))
+        for x in water.get("plan", []):
+            L.append("  %s　%d ml　%s" % (x["slot"], x["ml"], x["note"]))
+        L.append("")
     L.append("【购物清单 · %d天汇总】" % _nd)
     L.append("  %s %s %s" % (_pad("食材", 17), _pad("购买量", 11), "参考价"))
     for s in shopping_total:

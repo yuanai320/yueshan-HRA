@@ -66,6 +66,30 @@ FOODS = [
     {"name": "杏仁", "cat": "坚果", "kcal": 578, "p": 21.0, "f": 51.0, "c": 22.0, "flags": ["low_purine", "low_sodium", "vegetarian", "high_fat"]},
     # ---- 油脂类（首选橄榄油） ----
     {"name": "橄榄油", "cat": "油脂", "kcal": 884, "p": 0.0, "f": 100.0, "c": 0.0, "flags": ["low_purine", "low_sodium", "vegetarian", "high_fat"]},
+
+    # ---- 补充：常见家常食材（近似值取自《中国食物成分表》第 6 版，每 100g 可食部）----
+    {"name": "小米(干)", "cat": "谷薯", "kcal": 361, "p": 9.0, "f": 3.1, "c": 75.1, "flags": ["low_gi", "low_purine", "low_sodium", "vegetarian"]},
+    {"name": "藜麦(干)", "cat": "谷薯", "kcal": 368, "p": 14.1, "f": 6.1, "c": 64.2, "flags": ["low_gi", "low_sodium", "vegetarian"]},
+    {"name": "荞麦面(干)", "cat": "谷薯", "kcal": 340, "p": 11.3, "f": 2.3, "c": 71.0, "flags": ["low_gi", "low_sodium", "vegetarian"]},
+    {"name": "馒头", "cat": "谷薯", "kcal": 223, "p": 7.0, "f": 1.1, "c": 47.0, "flags": ["low_purine", "low_sodium", "vegetarian"]},
+    {"name": "山药", "cat": "谷薯", "kcal": 57, "p": 1.9, "f": 0.2, "c": 12.4, "flags": ["low_gi", "low_purine", "low_sodium", "vegetarian"]},
+    {"name": "鲈鱼", "cat": "蛋白", "kcal": 105, "p": 18.6, "f": 3.4, "c": 0.0, "flags": ["low_sodium", "low_fat", "lean"]},
+    {"name": "鳕鱼", "cat": "蛋白", "kcal": 88, "p": 20.4, "f": 0.5, "c": 0.5, "flags": ["low_sodium", "low_fat", "lean"]},
+    {"name": "鸡腿肉(去皮)", "cat": "蛋白", "kcal": 121, "p": 19.0, "f": 4.5, "c": 0.5, "flags": ["low_purine", "low_sodium", "lean"]},
+    {"name": "猪里脊", "cat": "蛋白", "kcal": 155, "p": 20.2, "f": 7.9, "c": 0.7, "flags": ["low_purine", "low_sodium", "lean"]},
+    {"name": "豆干", "cat": "蛋白", "kcal": 140, "p": 16.2, "f": 3.6, "c": 11.5, "flags": ["low_purine", "low_sodium", "vegetarian"]},
+    {"name": "虾仁", "cat": "蛋白", "kcal": 48, "p": 10.4, "f": 0.7, "c": 0.0, "flags": ["low_sodium", "low_fat", "lean"]},
+    {"name": "油麦菜", "cat": "蔬菜", "kcal": 15, "p": 1.4, "f": 0.4, "c": 2.1, "flags": ["low_gi", "low_purine", "low_sodium", "vegetarian", "low_fat"]},
+    {"name": "菜心", "cat": "蔬菜", "kcal": 28, "p": 2.8, "f": 0.5, "c": 3.8, "flags": ["low_gi", "low_purine", "low_sodium", "vegetarian", "low_fat"]},
+    {"name": "西葫芦", "cat": "蔬菜", "kcal": 19, "p": 0.8, "f": 0.2, "c": 3.8, "flags": ["low_gi", "low_purine", "low_sodium", "vegetarian", "low_fat"]},
+    {"name": "木耳(水发)", "cat": "蔬菜", "kcal": 21, "p": 1.5, "f": 0.2, "c": 6.0, "flags": ["low_gi", "low_purine", "low_sodium", "vegetarian", "low_fat"]},
+    {"name": "海带(水发)", "cat": "蔬菜", "kcal": 13, "p": 1.2, "f": 0.1, "c": 2.1, "flags": ["low_gi", "low_purine", "vegetarian", "low_fat"]},
+    {"name": "茄子", "cat": "蔬菜", "kcal": 23, "p": 1.1, "f": 0.2, "c": 4.9, "flags": ["low_gi", "low_purine", "low_sodium", "vegetarian", "low_fat"]},
+    {"name": "洋葱", "cat": "蔬菜", "kcal": 40, "p": 1.1, "f": 0.2, "c": 9.0, "flags": ["low_gi", "low_purine", "low_sodium", "vegetarian", "low_fat"]},
+    {"name": "紫甘蓝", "cat": "蔬菜", "kcal": 25, "p": 1.2, "f": 0.2, "c": 6.2, "flags": ["low_gi", "low_purine", "low_sodium", "vegetarian", "low_fat"]},
+    {"name": "四季豆", "cat": "蔬菜", "kcal": 30, "p": 2.5, "f": 0.2, "c": 5.7, "flags": ["low_gi", "low_sodium", "vegetarian", "low_fat"]},
+    {"name": "白萝卜", "cat": "蔬菜", "kcal": 16, "p": 0.9, "f": 0.1, "c": 4.0, "flags": ["low_gi", "low_purine", "low_sodium", "vegetarian", "low_fat"]},
+
 ]
 
 # ---------- 食物图片（emoji 代表，无网络也能显示）与参考价 ----------
@@ -395,3 +419,203 @@ if __name__ == "__main__":
     print("---- 解释 ----")
     for line in explanation("减脂", ["高血糖"]):
         print("·", line)
+
+
+# ══════════════════════════════════════════════════════════════
+# 菜谱版方案（v2）：六餐 + 菜名 + 做法 + 饮水计划
+# ══════════════════════════════════════════════════════════════
+ANIMAL_WORDS = ["鸡", "鱼", "虾", "猪", "牛", "肉", "肝", "带鱼", "鲈鱼", "鳕鱼"]
+VEG_PROTEIN = ["豆腐", "豆干", "无糖豆浆", "毛豆(熟)", "牛奶", "无糖酸奶", "鸡蛋"]
+
+def _set_ok(recipe, conds):
+    """判断套餐是否适配：忌口硬过滤、素食过滤动物蛋白。"""
+    names = [n for d in recipe["dishes"] for n, _ in d["items"]]
+    for c in conds:
+        if c.startswith("忌口:"):
+            for tok in _split_avoid(c[3:]):
+                for n in names:
+                    if _is_avoided(n, tok):
+                        return False
+    if "素食" in conds:
+        for n in names:
+            if any(w in n for w in ANIMAL_WORDS):
+                return False
+    return True
+
+
+def build_plan_v2(targets, conditions, prefs=None, days=1, portion=1.0,
+                  taste="家常", weight=60.0, activity="轻度活动"):
+    """菜谱版一日方案。
+
+    · 六餐按 MEAL_SPLIT 分配热量目标，每餐给「套餐（含 2–3 道菜）」；
+    · 每道菜有菜名、用量、做法步骤、小提示——照着能做；
+    · 分量按用户热量目标自动缩放（相对套餐设计热量），取整到 5g；
+    · 同时给全天饮水计划（总量 + 分时段）。
+    """
+    from recipes import RECIPES, MEAL_ORDER, MEAL_SPLIT, water_plan
+
+    conds = list(conditions or [])
+    oil_adj = {"清淡": -2, "家常": 0, "浓郁": 2}.get(taste, 0)
+    kcal_target = targets["kcal"]
+    day_plans = []
+    shop_total = {}
+
+    for d in range(days):
+        meals, day_shop = {}, {}
+        for meal in MEAL_ORDER:
+            pool = [r for r in RECIPES[meal] if _set_ok(r, conds)] or RECIPES[meal]
+            recipe = pool[d % len(pool)]
+            share = kcal_target * MEAL_SPLIT[meal]
+            # 先按原配方算真实热量，再按目标反推缩放系数（比预设 kcal_base 精确）
+            raw_kcal = 0.0
+            for _dish in recipe["dishes"]:
+                for _n, _g in _dish["items"]:
+                    _nf = _FOOD_BY_NAME.get(_n)
+                    if _nf:
+                        raw_kcal += _nf["kcal"] * _g / 100.0
+            factor = (share / raw_kcal) if raw_kcal > 0 else 1.0
+            factor = min(1.8, max(0.6, factor)) * (portion or 1.0)
+
+            dishes_out, flat_items = [], []
+            m_kcal = m_p = m_f = m_c = 0.0
+            for dish in recipe["dishes"]:
+                items_out, d_kcal = [], 0.0
+                for name, base_g in dish["items"]:
+                    nf = _FOOD_BY_NAME.get(name)
+                    if nf is None:
+                        continue
+                    g = base_g * factor
+                    if name == "橄榄油":
+                        g = max(3, base_g + oil_adj)
+                        g = base_g * factor + oil_adj
+                    g = max(3, round(g / 5) * 5) if g >= 5 else max(1, round(g))
+                    kk = nf["kcal"] * g / 100.0
+                    pp = nf["p"] * g / 100.0
+                    ff = nf["f"] * g / 100.0
+                    cc = nf["c"] * g / 100.0
+                    d_kcal += kk
+                    m_kcal += kk; m_p += pp; m_f += ff; m_c += cc
+                    items_out.append({"name": name, "g": int(g), "kcal": round(kk),
+                                      "emoji": _food_emoji(name, nf.get("cat", "")),
+                                      "price": _food_price(name, nf.get("cat", ""), g)})
+                    flat_items.append(items_out[-1])
+                    day_shop[name] = day_shop.get(name, 0) + g
+                dishes_out.append({"name": dish["name"], "steps": dish.get("steps", []),
+                                   "tip": dish.get("tip", ""), "items": items_out,
+                                   "kcal": round(d_kcal)})
+
+            meals[meal] = {
+                "set": recipe["set"],
+                "factor": round(factor, 4),
+                "dishes": dishes_out,
+                "items": flat_items,
+                "kcal": round(m_kcal), "p": round(m_p, 1),
+                "f": round(m_f, 1), "c": round(m_c, 1),
+                "share": round(MEAL_SPLIT[meal] * 100),
+                "target_kcal": round(share),
+            }
+
+        shopping = [{"name": k, "g": round(v),
+                     "emoji": _food_emoji(k, _FOOD_BY_NAME.get(k, {}).get("cat", "")),
+                     "price": _food_price(k, _FOOD_BY_NAME.get(k, {}).get("cat", ""), v)}
+                    for k, v in sorted(day_shop.items())]
+        day_plans.append({"label": f"第{d + 1}天", "meals": meals, "shopping": shopping})
+        for k, v in day_shop.items():
+            shop_total[k] = shop_total.get(k, 0) + v
+
+    shopping_total = [{"name": k, "g": round(v),
+                       "emoji": _food_emoji(k, _FOOD_BY_NAME.get(k, {}).get("cat", "")),
+                       "price": _food_price(k, _FOOD_BY_NAME.get(k, {}).get("cat", ""), v)}
+                      for k, v in sorted(shop_total.items())]
+
+    return {
+        "days": day_plans,
+        "shopping_total": shopping_total,
+        "meals": day_plans[0]["meals"],
+        "shopping": day_plans[0]["shopping"],
+        "water": water_plan(weight, activity),
+        "split": MEAL_SPLIT,
+        "targets": targets,
+        "version": "v2-recipes",
+    }
+
+
+# ── 换菜工具：单道菜替换（保持同一缩放比例，热量随之重算）──
+_ROLE_OF_CAT = {"谷薯": "staple", "蛋白": "protein", "蔬菜": "veg",
+                "水果": "fruit", "坚果": "nut", "油脂": "oil"}
+
+
+def dish_role(dish):
+    """判断这道菜的角色（主食 / 蛋白菜 / 素菜 / 汤 / 水果坚果），用于找同类替代。
+
+    判定顺序：先看菜名里的强特征（汤、粥饭面），再按**热量占比**看主料类别
+    ——按克数会被水分多的蔬菜或奶类带偏。
+    """
+    nm = dish.get("name", "")
+    if "汤" in nm:
+        return "soup"
+    if any(w in nm for w in ["粥", "饭", "面", "馒头", "面包", "红薯", "玉米", "山药", "三明治"]):
+        return "staple"
+
+    acc = {}
+    for it in dish.get("items", []):
+        if isinstance(it, dict):
+            name, g = it.get("name"), it.get("g", 0)
+        else:
+            name, g = it
+        nf = _FOOD_BY_NAME.get(name)
+        if nf and nf.get("cat") != "油脂":      # 油是辅料，不参与主料判定
+            acc[nf.get("cat", "")] = acc.get(nf.get("cat", ""), 0) + nf["kcal"] * g / 100.0
+    if not acc:
+        return "other"
+    return _ROLE_OF_CAT.get(max(acc, key=acc.get), "other")
+
+
+def scale_dish(dish, factor):
+    """按 factor 缩放一道菜的用量，返回带营养与 emoji 的新 dict。"""
+    items, kcal, pp, ff, cc = [], 0.0, 0.0, 0.0, 0.0
+    for name, base_g in dish.get("items", []):
+        nf = _FOOD_BY_NAME.get(name)
+        if nf is None:
+            continue
+        g = base_g * factor
+        g = max(3, round(g / 5) * 5) if g >= 5 else max(1, round(g))
+        kk = nf["kcal"] * g / 100.0
+        kcal += kk
+        pp += nf["p"] * g / 100.0
+        ff += nf["f"] * g / 100.0
+        cc += nf["c"] * g / 100.0
+        items.append({"name": name, "g": int(g), "kcal": round(kk),
+                      "emoji": _food_emoji(name, nf.get("cat", "")),
+                      "price": _food_price(name, nf.get("cat", ""), g)})
+    return {"name": dish["name"], "steps": dish.get("steps", []), "tip": dish.get("tip", ""),
+            "items": items, "kcal": round(kcal),
+            "p": round(pp, 1), "f": round(ff, 1), "c": round(cc, 1)}
+
+
+def alt_dish_for(meal, dish, conds=None, exclude=()):
+    """给某一餐的某道菜找替代：同角色、不同菜名、满足忌口与素食约束。"""
+    from recipes import RECIPES
+    role = dish_role(dish)
+    out, seen = [], set()
+    for r in RECIPES.get(meal, []):
+        if not _set_ok(r, conds or []):
+            continue
+        for dsh in r.get("dishes", []):
+            nm = dsh["name"]
+            if nm == dish["name"] or nm in seen or nm in (exclude or ()):
+                continue
+            if dish_role(dsh) == role:
+                seen.add(nm)
+                out.append(dsh)
+    return out
+
+
+def find_dish(meal, name):
+    """按餐次 + 菜名在菜谱库里找到原始菜品定义。"""
+    from recipes import RECIPES
+    for r in RECIPES.get(meal, []):
+        for dsh in r.get("dishes", []):
+            if dsh["name"] == name:
+                return dsh
+    return None

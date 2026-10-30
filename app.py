@@ -4,13 +4,12 @@
 零成本部署：Streamlit Cloud 免费档 + Folium + OpenStreetMap。
 视觉：黄绿活力系（催人奋进、有食欲、给人信心），与「蓝抑食欲」相反。
 核心：① 上传 HRA 报告（Excel/PPT/PDF/Word/图片）自动读取关键指标；
-       ② 也可手动填表（未做过 HRA 的人同样可用）；③ 全国就近买菜地图。
+       ② 也可手动填表（未做过 HRA 的人同样可用）；③ 一键导出 PDF / 文本版，可分享给营养师或家人。
 """
 
 import streamlit as st
 import re
 import foods as foods_mod
-import poi as poi_mod
 import hra_parser as hra_mod
 import export as export_mod
 
@@ -93,7 +92,7 @@ for _k, _v in _DEFAULTS.items():
 
 st.markdown('<p class="big-title">🥗 悦膳 <span class="accent">·</span> 膳食方案生成器</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub">把健康管理专业知识变成能上线的产品 · 健康服务与管理 作品4 · 源自「悦检」HRA 生态</p>', unsafe_allow_html=True)
-st.markdown('<p class="value">3 步拿到专属膳食方案：① 上传 HRA 报告自动读取（或手动填表） ② 生成一日三餐 + 购物清单 ③ 一键导出 PDF / 就近买菜地图</p>', unsafe_allow_html=True)
+st.markdown('<p class="value">3 步拿到专属膳食方案：① 上传 HRA 报告自动读取（或手动填表） ② 生成一日三餐 + 购物清单 ③ 一键导出 PDF / 文本版方案</p>', unsafe_allow_html=True)
 if USERS:
     _pl = st.session_state.get("_plans")
     _tail = f" · 已生成 <b>{_pl}</b> 份方案" if _pl else ""
@@ -219,7 +218,7 @@ with st.form("yueshan_form"):
         _count_plan()
 
 if not st.session_state.get("ys_generated", False):
-    st.info("填好上面（或上传 HRA 自动读取），点按钮，立刻生成专属膳食方案 + 购物清单 + 全国就近买菜地图 🗺️")
+    st.info("填好上面（或上传 HRA 自动读取），点按钮，立刻生成专属膳食方案 + 购物清单 + PDF / 文本版导出")
     st.markdown('<p class="disclaimer">说明：本工具为健康服务与管理专业的学习性作品，方案依《中国居民膳食指南2022》《地中海饮食》'
                 '《DASH饮食》原则做示例推算，不替代注册营养师或医师的诊断与治疗建议。</p>', unsafe_allow_html=True)
     st.stop()
@@ -236,7 +235,8 @@ if allergy.strip():
             _aversions.append(_tok)
 targets = foods_mod.compute_targets(sex, age, height, weight, activity, goal)
 portion = {"标准": 1.0, "偏少": 0.85, "偏多": 1.15}[portion_sel]
-plan = foods_mod.build_plan(targets, conds, prefs, days=days_sel, portion=portion, taste=taste_sel)
+plan = foods_mod.build_plan_v2(targets, conds, prefs, days=days_sel, portion=portion,
+                                  taste=taste_sel, weight=weight, activity=activity)
 
 st.markdown("### 📊 你的每日营养目标")
 m1, m2, m3, m4 = st.columns(4)
@@ -249,14 +249,81 @@ st.caption(f"基础代谢 BMR ≈ {targets['bmr']} kcal ｜ 每日总消耗 TDEE
 _nd = len(plan["days"])
 if _aversions:
     st.info(f"🚫 已按你的忌口自动避开：{'、'.join(_aversions)}（相关食材已从方案与购物清单移除）")
-st.markdown(f"### 🍱 膳食方案（共 {_nd} 天循环 · 食材亲民、厨房可操作）")
+if "swap" not in st.session_state:
+    st.session_state.swap = {}          # {(天|餐|菜序): 新菜名}
+
+st.markdown(f"### 🍱 一日六餐方案（共 {_nd} 天循环 · 每道菜都写了做法）")
+_w = plan.get("water") or {}
+if _w:
+    st.info(f"**全天目标 {targets['kcal']} kcal**，按六餐分配："
+            + "　".join(f"{m} {int(plan['split'][m]*100)}%" for m in plan["split"])
+            + f"。**建议饮水约 {_w['total']} ml**（约 {_w['total']//250} 杯）。")
+
 for _day in plan["days"]:
     st.markdown(f"#### 📅 {_day['label']}")
     for meal, d in _day["meals"].items():
-        with st.expander(f"{meal} · {d['kcal']} kcal（蛋白 {d['p']}g / 脂肪 {d['f']}g / 碳水 {d['c']}g）",
-                         expanded=(meal == "早餐" and _day is plan["days"][0])):
-            for it in d["items"]:
-                st.markdown(f"- {it.get('emoji','🍽️')} **{it['name']}**　{it['g']} g　·　{it['kcal']} kcal　·　约 ¥{it.get('price', 0)}")
+        _fac = d.get("factor", 1.0)
+        # 先按换菜表组装本餐实际菜品
+        _rendered = []
+        for _di, _dish in enumerate(d["dishes"]):
+            _sk = f"{_day['label']}|{meal}|{_di}"
+            _sel = st.session_state.swap.get(_sk)
+            if _sel:
+                _raw = foods_mod.find_dish(meal, _sel)
+                _rendered.append(foods_mod.scale_dish(_raw, _fac) if _raw else _dish)
+            else:
+                _rendered.append(_dish)
+        _kcal_now = sum(x["kcal"] for x in _rendered)
+        _head = f"{meal}　{_kcal_now} kcal　·　{d['set']}"
+        if _kcal_now != d["kcal"]:
+            _head += f"（已换菜 · 原 {d['kcal']}）"
+        with st.expander(_head, expanded=(meal == "早餐" and _day is plan["days"][0])):
+            st.caption(f"本餐占全天 {d['share']}%　目标 {d['target_kcal']} kcal　"
+                       f"当前 {_kcal_now} kcal（蛋白 {d['p']}g / 脂肪 {d['f']}g / 碳水 {d['c']}g）")
+            for _di, _dish in enumerate(_rendered):
+                _sk = f"{_day['label']}|{meal}|{_di}"
+                _col1, _col2 = st.columns([5, 1])
+                with _col1:
+                    st.markdown(f"**🍳 {_dish['name']}**　·　约 {_dish['kcal']} kcal")
+                with _col2:
+                    _alts = foods_mod.alt_dish_for(meal, d["dishes"][_di], conds)
+                    if _alts and st.button("🔄 换一道", key=f"swapbtn_{_sk}",
+                                           help=f"同类里可换 {len(_alts)} 道，点一下换下一道"):
+                        _names = [a["name"] for a in _alts]
+                        _cur = _dish["name"]
+                        _nxt = _names[(_names.index(_cur) + 1) % len(_names)] if _cur in _names else _names[0]
+                        st.session_state.swap[_sk] = _nxt
+                        st.rerun()
+                _ing = "、".join(f"{it['name']} {it['g']}g" for it in _dish["items"])
+                st.markdown(f"　食材：{_ing}")
+                for _i, _step in enumerate(_dish["steps"], 1):
+                    st.markdown(f"　{_i}. {_step}")
+                if _dish.get("tip"):
+                    st.caption(f"　💡 {_dish['tip']}")
+                st.markdown("")
+
+if st.session_state.get("swap"):
+    _n_swap = len(st.session_state["swap"])
+    _c1, _c2 = st.columns([3, 1])
+    with _c1:
+        st.caption(f"已替换 {_n_swap} 道菜。换过的菜热量已重新计算；"
+                   f"购物清单仍按原菜单汇总，实际采购请以当前菜单为准。")
+    with _c2:
+        if st.button("↩️ 全部还原", use_container_width=True):
+            st.session_state["swap"] = {}
+            st.rerun()
+
+if plan.get("water"):
+    _w = plan["water"]
+    st.markdown("### 💧 全天饮水计划")
+    st.markdown(f"**建议每日饮水约 {_w['total']} ml**（约 {_w['total']//250} 杯，不含食物中的水分）。"
+                f"《中国居民膳食指南（2022）》推荐成年女性 1500 ml、男性 1700 ml 起。")
+    st.markdown("| 时段 | 水量 | 怎么喝 |")
+    st.markdown("|---|---|---|")
+    for _x in _w["plan"]:
+        st.markdown(f"| {_x['slot']} | **{_x['ml']} ml** | {_x['note']} |")
+    st.caption("提示：天热、运动、出汗多时，在上述基础上再增加 300–500 ml；"
+               "睡前 1 小时少喝，避免起夜。")
 
 _shop_total_price = sum(s.get("price", 0) for s in plan["shopping_total"])
 _shop_title = (f"### 🛒 购物清单（{_nd} 天汇总 · 参考价约 ¥{_shop_total_price}）"
@@ -290,8 +357,10 @@ _expl_lines = foods_mod.explanation(goal, conditions, taste_sel)
 _hra_sum = None
 if "hra_last_summary" in st.session_state and st.session_state.get("hra_applied_for"):
     _hra_sum = st.session_state["hra_last_summary"]
-_pdf_bytes = export_mod.build_pdf(_user_label, targets, plan["days"], plan["shopping_total"], _expl_lines, _hra_sum)
-_txt_bytes = export_mod.build_plan_text(_user_label, targets, plan["days"], plan["shopping_total"], _expl_lines, _hra_sum).encode("utf-8")
+_pdf_bytes = export_mod.build_pdf(_user_label, targets, plan["days"], plan["shopping_total"],
+                                  _expl_lines, _hra_sum, water=plan.get("water"), split=plan.get("split"))
+_txt_bytes = export_mod.build_plan_text(_user_label, targets, plan["days"], plan["shopping_total"],
+                                        _expl_lines, _hra_sum, water=plan.get("water")).encode("utf-8")
 _d1, _d2 = st.columns(2)
 with _d1:
     st.download_button("📄 下载 PDF 版方案", data=_pdf_bytes, file_name="悦膳膳食方案.pdf",
@@ -303,32 +372,5 @@ st.caption("PDF 版可直接打印交给营养师 / 家人；文本版方便微�
 
 st.markdown("---")
 
-# ================= ④ 全国就近买菜地图 =================
-st.markdown("### 🗺️ 全国就近买菜地图（参考价）")
-st.markdown(poi_mod.GEO_JS, unsafe_allow_html=True)
-city = st.selectbox("选择城市（或授权定位）", ["全国概览"] + list(poi_mod.CITIES.keys()), index=0)
-
-try:
-    _qp = st.query_params
-    _lat = _qp.get("lat"); _lng = _qp.get("lng")
-except Exception:
-    _raw = st.experimental_get_query_params()
-    _lat = (_raw.get("lat") or [None])[0]
-    _lng = (_raw.get("lng") or [None])[0]
-
-user_center = None
-if _lat and _lng:
-    try:
-        user_center = (float(_lat), float(_lng))
-        st.success("已使用您的实时定位 📍")
-    except Exception:
-        pass
-
-map_html = poi_mod.build_map_html(city=city, shopping=plan["shopping"], user_center=user_center)
-st.components.v1.html(map_html, height=540)
-
-st.markdown('<p class="disclaimer">地图门店按「实际在营」标注：仅显示该市真实存在的连锁品牌，'
-            '不在营的一律不标；每城另附本地农贸市场 / 社区生鲜超市作为便民兜底。门店坐标为「城市中心 + 示意偏移」，以地图实际为准；'
-            '标价为「参考价」非实时零售价。实时价格需商家数据接口，本作品为免费学习项目，不接入付费数据源。</p>', unsafe_allow_html=True)
 st.markdown('<p class="disclaimer">免责声明：本方案为示例性推算，不构成医疗或营养诊断建议；'
             '如有疾病或特殊膳食需求，请咨询注册营养师或执业医师。</p>', unsafe_allow_html=True)
